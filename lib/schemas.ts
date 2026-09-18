@@ -27,6 +27,8 @@ export const profileEditSchema = z.object({
   city: z.string().trim().min(1, "Enter your city"),
   area: z.string().trim().min(1, "Enter your area or neighborhood"),
   cnicNumber: cnicSchema,
+  latitude: z.number("Pin your location before saving"),
+  longitude: z.number("Pin your location before saving"),
 });
 
 export const CONTACT_SUBJECTS = [

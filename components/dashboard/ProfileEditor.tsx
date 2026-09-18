@@ -279,6 +279,14 @@ export default function ProfileEditor({
     setErrors((prev) => ({ ...prev, [field]: undefined }));
   }
 
+  function clearLocErrors() {
+    setErrors((prev) => ({
+      ...prev,
+      latitude: undefined,
+      longitude: undefined,
+    }));
+  }
+
   async function save() {
     if (!draft) return;
     setSaving(true);
@@ -562,6 +570,7 @@ export default function ProfileEditor({
                   );
                   setLocError(null);
                   setShowMap(true);
+                  clearLocErrors();
                 }}
                 onNotice={(m) => setLocError(m)}
               />
@@ -579,6 +588,7 @@ export default function ProfileEditor({
                           : prev
                       );
                       setShowMap(false);
+                      clearLocErrors();
                     }}
                     className="text-mute transition-colors hover:text-blood"
                   >
@@ -588,16 +598,22 @@ export default function ProfileEditor({
               )}
             </div>
             {locError && <p className="mt-2 text-xs text-red-700">{locError}</p>}
+            {(errors.latitude || errors.longitude) && (
+              <p className="mt-2 text-xs text-red-700">
+                {errors.latitude ?? errors.longitude}
+              </p>
+            )}
             {showMap && draft.latitude != null && draft.longitude != null && (
               <div className="mt-3">
                 <LocationPinMap
                   latitude={draft.latitude}
                   longitude={draft.longitude}
-                  onChange={(lat, lng) =>
+                  onChange={(lat, lng) => {
                     setDraft((prev) =>
                       prev ? { ...prev, latitude: lat, longitude: lng } : prev
-                    )
-                  }
+                    );
+                    clearLocErrors();
+                  }}
                 />
               </div>
             )}

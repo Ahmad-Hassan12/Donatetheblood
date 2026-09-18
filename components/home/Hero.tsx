@@ -65,6 +65,18 @@ export default function Hero() {
   const scene = useSceneKind();
 
   useEffect(() => {
+    const reset = () => {
+      if (window.scrollY > 0) {
+        history.scrollRestoration = "manual";
+        window.scrollTo(0, 0);
+      }
+    };
+    reset();
+    window.addEventListener("load", reset);
+    return () => window.removeEventListener("load", reset);
+  }, []);
+
+  useEffect(() => {
     if (reduce) return;
     const ctx = gsap.context(() => {
       const trigger = {
