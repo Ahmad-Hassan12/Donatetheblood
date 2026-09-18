@@ -29,6 +29,9 @@ export interface DonorSearchResult extends DonorProfile {
   isAvailable: boolean;
   isVerified: boolean;
   distanceKm: number | null;
+  /** Never rendered by the card; only surfaced inside the request modal, where
+   *  the requester can reach the donor via the "Call Now" action. */
+  phone: string | null;
 }
 
 /**

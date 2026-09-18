@@ -174,18 +174,37 @@ export default function DonorRequestModal({ donor, onClose, onSent }: DonorReque
                 </p>
               )}
 
-              <button
-                type="submit"
-                disabled={phase.status === "sending" || !PHONE_RE.test(contact.trim())}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-blood text-sm font-semibold text-white shadow-[0_10px_24px_-10px_rgba(217,28,43,0.8)] transition-colors hover:bg-blood-deep disabled:opacity-60"
-              >
-                {phase.status === "sending" ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Send size={15} />
-                )}
-                {phase.status === "sending" ? "Sending…" : "Send request"}
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href={
+                    donor.phone
+                      ? `tel:${donor.phone.replace(/[\s()-]/g, "")}`
+                      : undefined
+                  }
+                  aria-disabled={donor.phone ? undefined : "true"}
+                  className={
+                    donor.phone
+                      ? "inline-flex h-12 items-center justify-center gap-2 rounded-full border border-blood/40 bg-white px-4 text-sm font-semibold text-blood transition-colors hover:bg-blood/5"
+                      : "inline-flex h-12 cursor-not-allowed items-center justify-center gap-2 rounded-full border border-fog bg-smoke px-4 text-sm font-semibold text-ink/40"
+                  }
+                >
+                  <Phone size={16} />
+                  Call Now
+                </a>
+
+                <button
+                  type="submit"
+                  disabled={phase.status === "sending" || !PHONE_RE.test(contact.trim())}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-blood text-sm font-semibold text-white shadow-[0_10px_24px_-10px_rgba(217,28,43,0.8)] transition-colors hover:bg-blood-deep disabled:opacity-60"
+                >
+                  {phase.status === "sending" ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Send size={15} />
+                  )}
+                  {phase.status === "sending" ? "Sending…" : "Send request"}
+                </button>
+              </div>
 
               <p className="text-center text-xs text-mute">
                 Sending the request alerts the donor and the team.

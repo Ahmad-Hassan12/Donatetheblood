@@ -496,8 +496,9 @@ export async function resendVerification(
 // Search (Find a Donor)
 // ---------------------------------------------------------------------------
 
-/** A row as returned by `GET /api/v1/donors`. Email/phone are never mapped
- *  into the public result shape — donor contact stays private. */
+/** A row as returned by `GET /api/v1/donors`. Email is never mapped into the
+ *  public result shape; phone is mapped so the requester can call the donor,
+ *  but the UI only surfaces it after a request is sent. */
 interface BackendDonorRow {
   id: string;
   fullName: string;
@@ -529,6 +530,7 @@ function mapBackendDonorResult(d: BackendDonorRow): DonorSearchResult {
     isAvailable: typeof d.isAvailable === "boolean" ? d.isAvailable : false,
     isVerified: typeof d.isVerified === "boolean" ? d.isVerified : false,
     distanceKm: null,
+    phone: typeof d.phone === "string" && d.phone.trim() ? d.phone : null,
   };
 }
 
