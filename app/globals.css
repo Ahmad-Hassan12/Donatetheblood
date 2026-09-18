@@ -1,26 +1,213 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-paper: #ffffff;
+  --color-ink: #0a0a0a;
+  --color-blood: #d91c2b;
+  --color-blood-deep: #b3121f;
+  --color-blush: #fcebec;
+  --color-smoke: #f6f6f7;
+  --color-fog: #e7e7ea;
+  --color-mute: #6f6f78;
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-archivo);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: auto;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-blood);
+  color: #ffffff;
+}
+
+/* Lenis smooth scroll baseline */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* -------- custom keyframe animations -------- */
+
+@keyframes beat {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  12% {
+    transform: scale(1.12);
+    opacity: 0.8;
+  }
+  24% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  36% {
+    transform: scale(1.07);
+    opacity: 0.7;
+  }
+  48% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+}
+
+.animate-beat {
+  animation: beat 2.5s ease-in-out infinite;
+}
+
+@keyframes floatSlow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+.animate-float-slow {
+  animation: floatSlow 6s ease-in-out infinite;
+}
+
+@keyframes rotateSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-rotate-slow {
+  animation: rotateSlow 70s linear infinite;
+}
+
+@keyframes scrollCue {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+}
+
+.animate-scroll-cue {
+  animation: scrollCue 2s ease-in-out infinite;
+}
+
+@keyframes floatDot {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.6;
+  }
+  55% {
+    transform: translateY(-120px);
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateY(-240px);
+    opacity: 0;
+  }
+}
+
+.animate-float-dot {
+  animation: floatDot 8s ease-in-out infinite;
+}
+
+/* -------- reduced motion -------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* -------- search page: leaflet map -------- */
+
+.bb-map .leaflet-container {
+  font-family: inherit;
+}
+
+.bb-pin {
+  width: 28px;
+  height: 36px;
+  filter: drop-shadow(0 6px 10px rgba(10, 10, 10, 0.25));
+  animation: bbPop 0.28s ease-out backwards;
+}
+
+.bb-pin svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.bb-pin--verified svg {
+  fill: #d91c2b;
+}
+
+.bb-pin--ghost svg {
+  fill: #6f6f78;
+}
+
+@keyframes bbPop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.bb-user {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #0a0a0a;
+  border: 4px solid #ffffff;
+  box-shadow: 0 0 0 3px rgba(217, 28, 43, 0.9), 0 4px 10px rgba(10, 10, 10, 0.35);
+  animation: bbPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes bbPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(217, 28, 43, 0.9), 0 4px 10px rgba(10, 10, 10, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(217, 28, 43, 0.28), 0 4px 10px rgba(10, 10, 10, 0.35);
+  }
 }
