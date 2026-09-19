@@ -5,7 +5,7 @@ import { zodFieldIssues } from "@/lib/zod-issues";
 const CONTACT_TO_EMAIL =
   process.env.CONTACT_TO_EMAIL ?? "donatetheblood@kivrosolutions.com";
 const CONTACT_FROM_EMAIL =
-  process.env.CONTACT_FROM_EMAIL ?? "onboarding@resend.dev";
+  process.env.CONTACT_FROM_EMAIL ?? "donatetheblood@kivrosolutions.com";
 
 const SUBJECT_LABELS = CONTACT_SUBJECTS.reduce<Record<string, string>>(
   (acc, s) => {
