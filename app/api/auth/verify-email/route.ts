@@ -1,7 +1,7 @@
-import { proxyToBackend } from "@/lib/backend";
+import { proxyNonSessionIssuer } from "@/lib/api/route-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  return proxyToBackend(request, "/api/v1/auth/verify-email");
+  return proxyNonSessionIssuer(request, "/api/v1/auth/verify-email");
 }

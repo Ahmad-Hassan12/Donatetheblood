@@ -91,6 +91,53 @@ export async function proxyTokenIssuer(
 }
 
 /**
+ * Proxies a POST that must never create a session (registration, email OTP
+ * verification). The backend may return access/refresh tokens in its body, but
+ * no auth cookie is set and every token field is stripped so the browser never
+ * receives login credentials — signing in stays exclusive to /auth/login.
+ */
+export async function proxyNonSessionIssuer(
+  request: Request,
+  backendPath: string
+): Promise<Response> {
+  if (!API_BASE_URL) return jsonError(BACKEND_UNSET_MSG, 503);
+
+  let body: string | null = null;
+  try {
+    body = await request.text();
+  } catch {
+    // no body
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(new URL(backendPath, API_BASE_URL), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      cache: "no-store",
+    });
+  } catch {
+    return jsonError(BACKEND_DOWN_MSG, 502);
+  }
+
+  const parsed = await readBody(upstream);
+  const bodyOut = cloneBody(parsed);
+  if (bodyOut && typeof bodyOut === "object" && !Array.isArray(bodyOut)) {
+    const root = bodyOut as Record<string, unknown>;
+    const data = root.data as Record<string, unknown> | undefined;
+    stripRefreshToken(root);
+    for (const key of ["accessToken", "access_token", "token", "jwt"]) {
+      delete root[key];
+      if (data && typeof data === "object") delete data[key];
+    }
+  }
+
+  const response = NextResponse.json(bodyOut, { status: upstream.status });
+  return response;
+}
+
+/**
  * Refreshes the session using the httpOnly refresh cookie, rotates to a new
  * cookie, and returns the fresh access token to the client.
  */

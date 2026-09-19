@@ -66,6 +66,9 @@ export default function Hero() {
 
   useEffect(() => {
     const reset = () => {
+      // Preserve hash deep links (e.g. /#about from the footer) — only
+      // normalize fresh page loads without an in-page target.
+      if (window.location.hash) return;
       if (window.scrollY > 0) {
         history.scrollRestoration = "manual";
         window.scrollTo(0, 0);
@@ -226,7 +229,7 @@ export default function Hero() {
               ) : (
                 <DropGlyph
                   className="animate-float-slow text-blood"
-                  size={Math.min(190, 190)}
+                  size={190}
                 />
               )}
             </div>

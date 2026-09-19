@@ -35,6 +35,7 @@ import type {
 } from "@/lib/search-types";
 import { getDonorList } from "@/lib/app-api";
 import { bloodGroupToBackend } from "@/lib/blood-group-map";
+import { distanceKm, donorPlace, geocodePlace } from "@/lib/geo";
 
 const DonorMapView = dynamic(
   () => import("@/components/search/DonorMapView"),
@@ -46,21 +47,99 @@ const ZOOM_FOR_RADIUS: Record<RadiusKm, number> = { 5: 13, 10: 12, 25: 11 };
 const DEFAULT_LOCATION_TEXT = "";
 
 /**
- * Client-side match for filters the backend doesn't apply yet. The API
- * supports `bloodGroup` and `city` server-side, but not `area` matching, so
- * location is matched here against city OR area. Query params for each filter
- * are still built in `runSearch`, so this filtering can move server-side later
- * without restructuring.
+ * Client-side match for filters the backend doesn't apply yet. The API only
+ * filters by `bloodGroup` server-side, so location and radius are resolved
+ * here:
+ *
+ * - With a search-center coordinate (geolocation, or a place the geocoder
+ *   pinned) donors are matched by distance within `radiusKm`.
+ * - When the center is missing (the typed location couldn't be pinned on the
+ *   map) the location label is matched against city OR area instead.
+ * - A typed label that text-matches donors takes precedence over the radius
+ *   pass: short area names like "chenab garden" can geocode ambiguously (to a
+ *   spot 150 km away), and radius must not turn a valid text match into a
+ *   false "no matches". Geolocation labels never text-match donor city/area,
+ *   so that path stays a pure distance/radius filter.
+ *
+ * Query params for each filter are still built in `runSearch`, so this
+ * filtering can move server-side later without restructuring.
  */
-function matchesFilters(donor: DonorSearchResult, f: DonorFilters): boolean {
-  if (f.bloodGroup && donor.bloodGroup !== f.bloodGroup) return false;
-  const location = f.locationLabel.trim().toLowerCase();
-  if (location) {
-    const city = donor.city.toLowerCase();
-    const area = donor.area.toLowerCase();
-    if (!city.includes(location) && !area.includes(location)) return false;
+async function filterResults(
+  donors: DonorSearchResult[],
+  f: DonorFilters
+): Promise<DonorSearchResult[]> {
+  let results = donors;
+  if (f.bloodGroup) {
+    const group = f.bloodGroup;
+    results = results.filter((d) => d.bloodGroup === group);
   }
-  return true;
+  const location = f.locationLabel.trim().toLowerCase();
+  const textMatches = location
+    ? results.filter(
+        (d) =>
+          d.city.toLowerCase().includes(location) ||
+          d.area.toLowerCase().includes(location)
+      )
+    : [];
+  const hasCenter =
+    f.latitude !== null &&
+    f.longitude !== null &&
+    !Number.isNaN(f.latitude) &&
+    !Number.isNaN(f.longitude);
+  if (!hasCenter || f.latitude === null || f.longitude === null) {
+    return textMatches.length > 0 ? textMatches : results;
+  }
+  const radiusMatches = await filterByRadius(results, f, f.latitude, f.longitude);
+  if (textMatches.length > 0) {
+    const inRadius = radiusMatches.filter((d) =>
+      textMatches.some((t) => t.id === d.id)
+    );
+    return inRadius.length > 0 ? inRadius : textMatches;
+  }
+  return radiusMatches;
+}
+
+/**
+ * Keeps donors whose home place falls inside `radiusKm` of the search center.
+ * Places are geocoded once per distinct place (cached in `lib/geo`). A donor
+ * whose place can't be geocoded is kept, so a geocoder hiccup never silently
+ * drops someone genuinely in range.
+ */
+async function filterByRadius(
+  donors: DonorSearchResult[],
+  f: DonorFilters,
+  centerLat: number,
+  centerLng: number
+): Promise<DonorSearchResult[]> {
+  const byPlace = new Map<string, DonorSearchResult[]>();
+  for (const donor of donors) {
+    const place = donorPlace(donor);
+    const list = byPlace.get(place) ?? [];
+    list.push(donor);
+    byPlace.set(place, list);
+  }
+  const kept: DonorSearchResult[] = [];
+  for (const [place, list] of byPlace) {
+    const point = await geocodePlace(place);
+    let distance: number | null = null;
+    if (point) {
+      distance = distanceKm(
+        { latitude: centerLat, longitude: centerLng },
+        point
+      );
+    }
+    if (distance === null || distance <= f.radiusKm) {
+      for (const donor of list) {
+        kept.push(distance === null ? donor : { ...donor, distanceKm: distance });
+      }
+    }
+  }
+  kept.sort(
+    (a, b) =>
+      (a.distanceKm ?? Number.POSITIVE_INFINITY) -
+      (b.distanceKm ?? Number.POSITIVE_INFINITY)
+  );
+  return kept;
 }
 
 function MapFallback() {
@@ -97,8 +176,11 @@ export default function SearchPage() {
   const [geoNotice, setGeoNotice] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersFollowing, setFiltersFollowing] = useState(false);
 
   const filtersRef = useRef(filters);
+  const mobileBarRef = useRef<HTMLDivElement>(null);
+  const filterPanelRef = useRef<HTMLElement>(null);
   const seqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const hasRun = useRef(false);
@@ -139,7 +221,9 @@ export default function SearchPage() {
     try {
       const data = await getDonorList(params.toString(), { signal: ctrl.signal });
       if (seq !== seqRef.current || ctrl.signal.aborted) return;
-      setDonors(data.donors.filter((d) => matchesFilters(d, f)));
+      const filtered = await filterResults(data.donors, f);
+      if (seq !== seqRef.current || ctrl.signal.aborted) return;
+      setDonors(filtered);
       setPagination(data.pagination);
       setStatus("success");
     } catch (err) {
@@ -151,18 +235,50 @@ export default function SearchPage() {
 
   // Debounced auto-search whenever core filters change. Runs once on page
   // load (no delay) and with a short debounce on every filter change after.
+  // Note: latitude/longitude are deliberately left out — location updates
+  // (useMyLocation / geocodeAndSearch) trigger runSearch() directly, so
+  // including them here would fire a duplicate request on every location change.
   useEffect(() => {
     const firstRun = !hasRun.current;
     hasRun.current = true;
     const t = setTimeout(() => void runSearch(), firstRun ? 0 : 450);
     return () => clearTimeout(t);
-  }, [
-    filters.bloodGroup,
-    filters.latitude,
-    filters.longitude,
-    filters.radiusKm,
-    runSearch,
-  ]);
+  }, [filters.bloodGroup, filters.radiusKm, runSearch]);
+
+  // Keeps the filter tab pinned to the top once the on-page filters have been
+  // pushed off the sticky offset (which happens near the bottom of the page):
+  // a fixed compact copy of the tab takes over so the search controls stay
+  // reachable for the whole scroll.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      let pinned = false;
+      const mobileBar = mobileBarRef.current;
+      if (mobileBar && mobileBar.offsetParent !== null) {
+        pinned = mobileBar.getBoundingClientRect().top < 52;
+      }
+      if (!pinned) {
+        const panel = filterPanelRef.current;
+        if (panel && panel.offsetParent !== null) {
+          pinned = panel.getBoundingClientRect().top < 84;
+        }
+      }
+      setFiltersFollowing((prev) => (prev === pinned ? prev : pinned));
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", update);
+    update();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", update);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
 
   const useMyLocation = useCallback(() => {
     if (typeof window === "undefined" || !("geolocation" in navigator)) {
@@ -196,6 +312,7 @@ export default function SearchPage() {
         setLocationText(label);
         setFiltersBoth({ latitude, longitude, locationLabel: label });
         setLocating(false);
+        void runSearch();
       },
       (err) => {
         setLocating(false);
@@ -207,7 +324,7 @@ export default function SearchPage() {
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
-  }, [setFiltersBoth]);
+  }, [runSearch, setFiltersBoth]);
 
   const geocodeAndSearch = useCallback(
     async (text: string) => {
@@ -293,7 +410,10 @@ export default function SearchPage() {
         </div>
 
         {/* Mobile: compact filter bar */}
-        <div className="sticky top-16 z-40 mt-5 -mx-4 flex items-center gap-2 px-4 sm:mx-0 sm:px-0 lg:hidden">
+        <div
+          ref={mobileBarRef}
+          className="sticky top-16 z-40 mt-5 -mx-4 flex items-center gap-2 px-4 sm:mx-0 sm:px-0 lg:hidden"
+        >
           <div className="flex w-full items-center gap-2 overflow-x-auto rounded-full border border-fog bg-white/95 py-1.5 pl-2 pr-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur">
             <Chip>{filters.bloodGroup ?? "Any group"}</Chip>
             <Chip>{filters.locationLabel || "Anywhere"}</Chip>
@@ -311,6 +431,7 @@ export default function SearchPage() {
 
         {/* Desktop: full filter panel */}
         <section
+          ref={filterPanelRef}
           aria-label="Search filters"
           className="mt-6 hidden rounded-2xl border border-fog bg-white p-5 shadow-sm lg:sticky lg:top-24 lg:z-30 lg:mt-8 lg:block"
         >
@@ -469,6 +590,50 @@ export default function SearchPage() {
           </section>
         </div>
       </main>
+
+      {/* Pinned search tab: takes over when the on-page filter bar/panel has
+          been scrolled out of view so the search controls stay reachable. */}
+      {filtersFollowing && (
+        <>
+          <div className="fixed inset-x-0 top-16 z-40 border-b border-fog bg-white/95 px-4 py-2 backdrop-blur lg:hidden">
+            <div className="flex w-full items-center gap-2">
+              <div className="flex w-full items-center gap-2 overflow-x-auto rounded-full border border-fog bg-white py-1.5 pl-2 pr-1.5 text-xs font-medium text-ink shadow-sm">
+                <Chip>{filters.bloodGroup ?? "Any group"}</Chip>
+                <Chip>{filters.locationLabel || "Anywhere"}</Chip>
+                <Chip>{filters.radiusKm} km</Chip>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(true)}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 text-sm font-semibold text-white"
+              >
+                <SlidersHorizontal size={15} />
+                Filters
+              </button>
+            </div>
+          </div>
+
+          <div className="fixed inset-x-0 top-16 z-30 hidden lg:block">
+            <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-10">
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-fog bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur">
+                <div className="flex min-w-0 items-center gap-2 overflow-x-auto text-xs font-medium text-ink">
+                  <Chip>{filters.bloodGroup ?? "Any group"}</Chip>
+                  <Chip>{filters.locationLabel || "Anywhere"}</Chip>
+                  <Chip>{filters.radiusKm} km</Chip>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleSearch()}
+                  className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-blood px-4 text-sm font-semibold text-white"
+                >
+                  <Search size={14} />
+                  Search
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Mobile: filters bottom sheet */}
       <AnimatePresence>

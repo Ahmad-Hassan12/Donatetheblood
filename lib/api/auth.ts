@@ -3,8 +3,9 @@
  * `raw` so they never attach a token or enter the refresh loop; session reads
  * go through `apiClient` (auto-refresh on 401).
  *
- * On login/register the server parks the refresh token in an httpOnly cookie
- * and returns only the access token, which we keep in memory.
+ * On login the server parks the refresh token in an httpOnly cookie and
+ * returns only the access token, which we keep in memory. Registration and
+ * email verification never create a session — the donor signs in manually.
  */
 
 import { ApiError, apiClient, raw } from "@/lib/api/client";
@@ -44,14 +45,14 @@ export async function register(payload: DonorRegistration): Promise<void> {
   // The backend stores a pending registration and emails a 6-digit OTP — it
   // does not create the account and does not issue tokens. The frontend then
   // verifies the OTP through /api/auth/verify-otp (proxied to the backend's
-  // /api/v1/auth/verify-email) before any account exists.
+  // /api/v1/auth/verify-email) before any account exists. Registering never
+  // stores a token or sets auth state — the donor signs in at /login after
+  // verifying their email.
   const res = await raw.post("/api/donors/register", payload);
   const body = res.data as { success?: boolean; message?: string } | undefined;
   if (body?.success === false) {
     throw new ApiError(body.message ?? "Registration failed.", 200);
   }
-  const tokens = extractTokens(res.data);
-  if (tokens.accessToken) setAccessToken(tokens.accessToken);
 }
 
 export interface VerifyOtpPayload {

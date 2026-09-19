@@ -18,6 +18,10 @@ const archivo = Archivo({
 export const metadata: Metadata = {
   metadataBase: new URL("https://donatetheblood.pk"),
   title: "Donate the Blood — Find a blood donor in an emergency",
+  icons: {
+    icon: "/images/faviicon.png",
+    apple: "/images/faviicon.png",
+  },
   description:
     "Donate the Blood connects people who need blood with verified donors nearby — in the minutes that matter.",
 };
